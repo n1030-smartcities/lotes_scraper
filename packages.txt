@@ -1,6 +1,5 @@
-libcairo2t64
-libglib2.0-0t64
-libasound2t64
+libcairo2
+libasound2
 libnss3
 libnspr4
 libatk1.0-0
