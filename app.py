@@ -115,15 +115,9 @@ if submitted:
     log_container = st.empty()
     progress_bar = st.progress(0, text="Iniciando...")
 
-    logs: list[str] = []
+    # Filas de comunicação entre thread e UI (sem chamar st.* de dentro da thread)
+    log_queue: queue.Queue = queue.Queue()
     result_queue: queue.Queue = queue.Queue()
-    log_lock = threading.Lock()
-
-    def log_fn(msg: str):
-        with log_lock:
-            logs.append(msg)
-            # Atualiza o log visível (últimas 12 linhas)
-            log_container.code("\n".join(logs[-12:]), language=None)
 
     # headless obrigatório: Streamlit Cloud não tem servidor de display (X11)
     tem_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
@@ -134,24 +128,35 @@ if submitted:
                 url_base=url.strip(),
                 tipo=tipo,
                 max_validos=int(max_validos),
-                headless=not tem_display,  # True no cloud, False só se tiver display local
-                log_fn=log_fn,
+                headless=not tem_display,
+                log_fn=lambda msg: log_queue.put(msg),  # só enfileira, não toca na UI
             )
             result_queue.put(("ok", dados))
         except Exception as e:
             result_queue.put(("erro", str(e)))
 
-    # Roda em thread para não travar o Streamlit
+    import time
+
     thread = threading.Thread(target=run_scraper, daemon=True)
     thread.start()
 
-    # Aguarda com feedback visual
+    # Loop principal: lê logs da fila e atualiza UI no thread correto
+    logs: list[str] = []
     dot = 0
     while thread.is_alive():
-        dots = "." * (dot % 4 + 1)
-        progress_bar.progress(0, text=f"Coletando{dots}")
+        while not log_queue.empty():
+            logs.append(log_queue.get_nowait())
+        if logs:
+            log_container.code("\n".join(logs[-12:]), language=None)
+        progress_bar.progress(0, text=f"Coletando{'.' * (dot % 4 + 1)}")
         dot += 1
-        import time; time.sleep(0.5)
+        time.sleep(0.5)
+
+    # Drena logs restantes após a thread encerrar
+    while not log_queue.empty():
+        logs.append(log_queue.get_nowait())
+    if logs:
+        log_container.code("\n".join(logs[-12:]), language=None)
 
     thread.join()
     progress_bar.progress(100, text="Concluído!")
