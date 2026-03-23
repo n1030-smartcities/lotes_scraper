@@ -7,7 +7,6 @@ import re
 import time
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
-from playwright_stealth import stealth_sync
 
 
 USER_AGENT = (
@@ -15,6 +14,40 @@ USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/122.0.0.0 Safari/537.36"
 )
+
+# Script de stealth injetado antes de qualquer navegação.
+# Remove as marcas que o Cloudflare usa para detectar automação.
+STEALTH_JS = """
+// Remove navigator.webdriver
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+// Simula plugins reais de browser
+Object.defineProperty(navigator, 'plugins', {
+    get: () => [
+        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+        { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+    ],
+});
+
+// Simula linguagens do navegador
+Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });
+
+// Remove propriedades do Chrome que indicam headless
+window.chrome = { runtime: {}, loadTimes: function(){}, csi: function(){}, app: {} };
+
+// Permissão de notificações não definida = comportamento normal
+const originalQuery = window.navigator.permissions.query;
+window.navigator.permissions.query = (parameters) =>
+    parameters.name === 'notifications'
+        ? Promise.resolve({ state: Notification.permission })
+        : originalQuery(parameters);
+
+// Remove o "HeadlessChrome" do userAgent (já definido no contexto, reforça aqui)
+Object.defineProperty(navigator, 'userAgent', {
+    get: () => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+});
+"""
 
 # Campos obrigatórios por tipo (se algum faltar, o registro é descartado)
 CAMPOS_OBRIGATORIOS = {
@@ -258,8 +291,8 @@ def scrape(
         )
         page = context.new_page()
 
-        # Aplica stealth ANTES de qualquer navegação (remove fingerprints de automação)
-        stealth_sync(page)
+        # Injeta stealth JS antes de qualquer página carregar
+        page.add_init_script(STEALTH_JS)
 
         # Bloqueia imagens e fontes para acelerar — mas permite JS (necessário pro Cloudflare)
         def bloquear_recursos(route):
