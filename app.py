@@ -23,7 +23,7 @@ from scraper import scrape, CAMPOS_COLETADOS
 @st.cache_resource(show_spinner="Instalando navegador (apenas na primeira execução)...")
 def instalar_playwright():
     result = subprocess.run(
-        [sys.executable, "-m", "playwright", "install", "chromium"],
+        [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
         capture_output=True, text=True
     )
     return result.returncode
