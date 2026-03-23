@@ -1,5 +1,9 @@
+libcairo2t64
+libglib2.0-0t64
+libasound2t64
 libnss3
 libnspr4
+libatk1.0-0
 libatk-bridge2.0-0
 libcups2
 libdrm2
@@ -10,3 +14,5 @@ libxfixes3
 libxrandr2
 libgbm1
 libatspi2.0-0
+libpango-1.0-0
+libdbus-1-3
