@@ -6,12 +6,29 @@ Executar com:
 """
 
 import io
+import subprocess
+import sys
 import threading
 import queue
 import pandas as pd
 import streamlit as st
 
 from scraper import scrape, CAMPOS_COLETADOS
+
+
+# ---------------------------------------------------------------------------
+# Instala o Chromium automaticamente se não estiver presente (Streamlit Cloud)
+# ---------------------------------------------------------------------------
+
+@st.cache_resource(show_spinner="Instalando navegador (apenas na primeira execução)...")
+def instalar_playwright():
+    result = subprocess.run(
+        [sys.executable, "-m", "playwright", "install", "chromium"],
+        capture_output=True, text=True
+    )
+    return result.returncode
+
+instalar_playwright()
 
 
 # ---------------------------------------------------------------------------
