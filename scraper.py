@@ -179,19 +179,47 @@ def extrair_card(card, tipo: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 def encontrar_cards(soup: BeautifulSoup) -> list:
-    seletores = [
+    # Seletores por data-qa (mais estável)
+    seletores_exatos = [
         "[data-qa='POSTING_CARD']",
-        "div[data-id]",
-        "article[data-id]",
-        "[class*='postingCardLayout']",
-        "[class*='PostingCard']",
-        "[class*='posting-card']",
+        "[data-qa='posting-card']",
     ]
-    for sel in seletores:
+    for sel in seletores_exatos:
         cards = soup.select(sel)
         if cards:
             return cards
-    return []
+
+    # Seletores por data-id
+    for tag in ("div", "article", "li", "section"):
+        cards = soup.select(f"{tag}[data-id]")
+        if cards:
+            return cards
+
+    # Seletores por classe parcial (styled-components gera nomes dinâmicos)
+    parciais = [
+        "postingCardLayout", "PostingCard", "posting-card",
+        "postingCard", "property-card", "PropertyCard",
+        "result-item", "ResultItem", "listingCard",
+    ]
+    for parte in parciais:
+        cards = soup.select(f"[class*='{parte}']")
+        if cards:
+            return cards
+
+    # Fallback inteligente: procura divs/articles que contenham preço (R$)
+    # e algum indicador de área ou endereço — típico de cards de imóvel
+    candidatos = []
+    for el in soup.find_all(["div", "article", "li", "section"]):
+        texto = el.get_text(" ")
+        tem_preco = "R$" in texto
+        tem_area = bool(re.search(r"\d+\s*m[²2]", texto, re.I))
+        tem_link = el.find("a", href=re.compile(r"/[a-z]+-\d+\.html"))
+        if tem_preco and (tem_area or tem_link):
+            # Evita pegar containers pai (prefere o elemento mais específico)
+            pai = el.find_parent(lambda p: p in candidatos)
+            if not pai:
+                candidatos.append(el)
+    return candidatos
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +233,11 @@ def scrape(
     headless: bool = True,
     delay: float = 2.5,
     log_fn=print,
-) -> list[dict]:
+) -> tuple[list[dict], str]:
+    """
+    Retorna (lista_de_imoveis, html_debug).
+    html_debug é o HTML da última página quando nenhum card foi encontrado, ou "".
+    """
     """
     Scrapa a URL prefiltrada do ImovelWeb até atingir `max_validos` registros.
 
@@ -213,6 +245,7 @@ def scrape(
     """
     tipo = tipo.lower()
     resultados = []
+    html_debug = ""
     pagina = 1
 
     with sync_playwright() as p:
@@ -255,9 +288,8 @@ def scrape(
             cards = encontrar_cards(soup)
 
             if not cards:
-                log_fn("⚠️ Nenhum card encontrado. Salvando debug.html e encerrando.")
-                with open("debug.html", "w", encoding="utf-8") as f:
-                    f.write(html)
+                log_fn("⚠️ Nenhum card encontrado. Retornando HTML para diagnóstico.")
+                html_debug = html
                 break
 
             novos = 0
@@ -289,4 +321,4 @@ def scrape(
         browser.close()
 
     log_fn(f"\n✔ Scraping concluído. {len(resultados)} registros válidos coletados.")
-    return resultados
+    return resultados, html_debug

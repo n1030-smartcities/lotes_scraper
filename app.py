@@ -124,16 +124,16 @@ if submitted:
 
     def run_scraper():
         try:
-            dados = scrape(
+            dados, html_debug = scrape(
                 url_base=url.strip(),
                 tipo=tipo,
                 max_validos=int(max_validos),
                 headless=not tem_display,
-                log_fn=lambda msg: log_queue.put(msg),  # só enfileira, não toca na UI
+                log_fn=lambda msg: log_queue.put(msg),
             )
-            result_queue.put(("ok", dados))
+            result_queue.put(("ok", dados, html_debug))
         except Exception as e:
-            result_queue.put(("erro", str(e)))
+            result_queue.put(("erro", str(e), ""))
 
     import time
 
@@ -161,13 +161,29 @@ if submitted:
     thread.join()
     progress_bar.progress(100, text="Concluído!")
 
-    status, payload = result_queue.get()
+    status, payload, html_debug = result_queue.get()
 
     if status == "erro":
         st.error(f"Erro durante o scraping:\n\n{payload}")
         st.stop()
 
     dados: list[dict] = payload
+
+    # Mostra debug HTML se nenhum card foi encontrado
+    if html_debug:
+        st.divider()
+        st.subheader("🔍 Debug HTML")
+        st.caption("Nenhum card foi encontrado neste HTML. Use para identificar os seletores corretos.")
+        col_dl, _ = st.columns([1, 3])
+        with col_dl:
+            st.download_button(
+                "⬇️ Baixar debug.html",
+                data=html_debug.encode("utf-8"),
+                file_name="debug.html",
+                mime="text/html",
+            )
+        with st.expander("Ver HTML (primeiros 8.000 caracteres)"):
+            st.code(html_debug[:8000], language="html")
 
     # ---------------------------------------------------------------------------
     # Resultados
