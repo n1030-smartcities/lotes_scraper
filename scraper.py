@@ -7,6 +7,7 @@ import re
 import time
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+from playwright_stealth import stealth_sync
 
 
 USER_AGENT = (
@@ -257,7 +258,10 @@ def scrape(
         )
         page = context.new_page()
 
-        # Bloqueia imagens e fontes para acelerar (não afeta o HTML)
+        # Aplica stealth ANTES de qualquer navegação (remove fingerprints de automação)
+        stealth_sync(page)
+
+        # Bloqueia imagens e fontes para acelerar — mas permite JS (necessário pro Cloudflare)
         def bloquear_recursos(route):
             if route.request.resource_type in ("image", "font", "media"):
                 route.abort()
@@ -270,13 +274,23 @@ def scrape(
             log_fn(f"🔍 Página {pagina}: {url}")
 
             try:
-                page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                # networkidle aguarda o Cloudflare challenge completar
+                page.goto(url, wait_until="networkidle", timeout=45_000)
                 time.sleep(delay)
+
+                # Verifica se ainda está na tela de verificação de segurança
+                titulo = page.title().lower()
+                corpo = page.inner_text("body").lower() if page.query_selector("body") else ""
+                if "verificação" in corpo or "verificacao" in corpo or "security check" in corpo:
+                    log_fn("⏳ Aguardando verificação de segurança do Cloudflare...")
+                    time.sleep(8)  # aguarda challenge resolver
 
                 # Scroll lento para ativar lazy-load
                 for _ in range(4):
                     page.evaluate("window.scrollBy(0, window.innerHeight * 0.8)")
-                    time.sleep(0.6)
+                    time.sleep(0.8)
+                page.evaluate("window.scrollTo(0, 0)")
+                time.sleep(0.5)
 
                 html = page.content()
 
