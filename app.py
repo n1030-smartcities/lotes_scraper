@@ -5,7 +5,8 @@ Executar com:
     streamlit run app.py
 """
 
-import io
+import glob
+import os
 import subprocess
 import sys
 import threading
@@ -20,15 +21,26 @@ from scraper import scrape, CAMPOS_COLETADOS
 # Instala o Chromium automaticamente se não estiver presente (Streamlit Cloud)
 # ---------------------------------------------------------------------------
 
-@st.cache_resource(show_spinner="Instalando navegador (apenas na primeira execução)...")
-def instalar_playwright():
-    result = subprocess.run(
-        [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
-        capture_output=True, text=True
-    )
-    return result.returncode
+def _browser_instalado() -> bool:
+    cache = os.path.expanduser("~/.cache/ms-playwright")
+    # Procura qualquer executável chromium (headless shell ou full)
+    padrao = os.path.join(cache, "chromium*", "**", "chrom*")
+    return bool(glob.glob(padrao, recursive=True))
 
-instalar_playwright()
+
+def garantir_browser():
+    if _browser_instalado():
+        return
+    with st.spinner("Instalando Chromium (apenas na primeira execução)..."):
+        result = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            capture_output=True, text=True,
+        )
+    if result.returncode != 0:
+        st.error(
+            f"Falha ao instalar o Chromium:\n\n```\n{result.stderr[-1500:]}\n```"
+        )
+        st.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +107,8 @@ if submitted:
     if "imovelweb.com.br" not in url:
         st.error("A URL deve ser do site imovelweb.com.br.")
         st.stop()
+
+    garantir_browser()
 
     st.divider()
     st.subheader("⏳ Progresso")
