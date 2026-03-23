@@ -8,6 +8,7 @@ Executar com:
 import glob
 import os
 import subprocess
+
 import sys
 import threading
 import queue
@@ -86,8 +87,6 @@ with st.form("form_scraper"):
             help="O scraper para quando atingir esse número de registros com todos os campos obrigatórios preenchidos.",
         )
 
-    headless = st.checkbox("Rodar browser em segundo plano (recomendado)", value=True)
-
     campos_info = CAMPOS_COLETADOS.get(tipo, [])
     st.info(f"**Campos coletados para '{tipo}':** {', '.join(campos_info)}\n\n"
             f"Registros sem todos os campos obrigatórios são descartados automaticamente.")
@@ -126,13 +125,16 @@ if submitted:
             # Atualiza o log visível (últimas 12 linhas)
             log_container.code("\n".join(logs[-12:]), language=None)
 
+    # headless obrigatório: Streamlit Cloud não tem servidor de display (X11)
+    tem_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
     def run_scraper():
         try:
             dados = scrape(
                 url_base=url.strip(),
                 tipo=tipo,
                 max_validos=int(max_validos),
-                headless=headless,
+                headless=not tem_display,  # True no cloud, False só se tiver display local
                 log_fn=log_fn,
             )
             result_queue.put(("ok", dados))
